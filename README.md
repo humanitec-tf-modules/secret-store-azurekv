@@ -137,91 +137,19 @@ module "my_other_azurekv_secret_store" {
 }
 ```
 
-### Environment-local secret store
-
-This configuration creates a secret store in the namespace of an Environment, so that only Deployments into that namespace can use it. An Environment-local secret store cannot be the default store, so `secret_store_default` must be set to `false`. The Operator gets read-only access to this store.
-
-```hcl
-module "my_azurekv_secret_store" {
-  source = "github.com/humanitec-tf-modules/secret-store-azurekv?ref=vX.Y.Z"
-  providers = {
-    azurerm    = azurerm
-    azuread    = azuread
-    kubernetes = kubernetes
-  }
-
-  secret_store_id           = "my-azurekv"
-  secret_store_default      = false
-  secret_store_cluster_wide = false
-  secret_store_namespace    = "my-app-development"
-  key_vault_id              = azurerm_key_vault.my_key_vault.id
-  aks_oidc_issuer_url       = azurerm_kubernetes_cluster.my_aks_cluster.oidc_issuer_url
-}
-```
-
-The managed identity and the federated identity credential are still created for the Operator service account in the Operator namespace, as the Operator reads the secrets on behalf of the Environment. This only works if it is the only secret store using Workload Identity on the cluster, as the [Operator uses only one managed identity](#configure-the-operator-for-workload-identity). Otherwise, pass in the managed identity of the Operator as shown in [Several Environment-local secret stores](#several-environment-local-secret-stores).
-
 ### Several Environment-local secret stores
 
-This configuration creates one Environment-local secret store per Environment namespace. As the [Operator uses only one managed identity](#configure-the-operator-for-workload-identity), all secret stores necessarily share it, as well as its federated identity credential. Azure allows only one federated identity credential with the same issuer and subject on a managed identity, and the subject is always the Operator service account. So pass in the managed identity, and set `federated_identity_credential_create` to `false`.
+An Environment-local secret store is located in the namespace of an Environment, so that only Deployments into that namespace can use it. It cannot be the default store, so `secret_store_default` must be set to `false`, and the Operator gets read-only access to it.
+
+These configurations create one Environment-local secret store per Environment namespace. The Operator reads the secrets on behalf of the Environments, so all secret stores use the identity of the Operator. As the [Operator uses only one managed identity](#configure-the-operator-for-workload-identity), all secret stores necessarily share it, as well as its federated identity credential. Azure allows only one federated identity credential with the same issuer and subject on a managed identity, and the subject is always the Operator service account. So pass in the managed identity, and set `federated_identity_credential_create` to `false`.
 
 Whether the Environment-local stores need to grant the managed identity access to the Key Vault depends on which Key Vault they use. If the Environment-local stores use service principals instead of Workload Identity, none of this applies, see [With service principals](#with-service-principals).
-
-#### Same Key Vault as the default secret store
-
-In this setup the instance of the module creating the [default secret store](#common-usage-default-secret-store-with-workload-identity) also creates the managed identity and its federated identity credential, and grants it read/write access to the Key Vault. The read-only access needed by the Environment-local stores is included in that access, so set `key_vault_access_create` to `false` for them. Granting it again would fail anyway, as Azure allows only one role assignment of the same role to the same identity on the same Key Vault, and only one access policy per identity on a Key Vault.
-
-The access then belongs to the default store, which also owns the managed identity, so removing an Environment-local store does not revoke the access of the others. This works the same for both permission models of the Key Vault.
-
-```hcl
-locals {
-  environment_namespaces = toset(["my-app-development", "my-app-staging"])
-}
-
-# Default secret store, creating the managed identity of the Operator
-module "my_azurekv_secret_store" {
-  source = "github.com/humanitec-tf-modules/secret-store-azurekv?ref=vX.Y.Z"
-  providers = {
-    azurerm    = azurerm
-    azuread    = azuread
-    kubernetes = kubernetes
-  }
-
-  secret_store_id     = "my-azurekv"
-  key_vault_id        = azurerm_key_vault.my_key_vault.id
-  aks_oidc_issuer_url = azurerm_kubernetes_cluster.my_aks_cluster.oidc_issuer_url
-}
-
-# Environment-local secret stores, using the managed identity and the Key Vault access of the default store
-module "my_environment_azurekv_secret_store" {
-  source = "github.com/humanitec-tf-modules/secret-store-azurekv?ref=vX.Y.Z"
-  providers = {
-    azurerm    = azurerm
-    azuread    = azuread
-    kubernetes = kubernetes
-  }
-  for_each = local.environment_namespaces
-
-  secret_store_id           = "my-azurekv-${each.key}"
-  secret_store_default      = false
-  secret_store_cluster_wide = false
-  secret_store_namespace    = each.key
-  key_vault_id              = azurerm_key_vault.my_key_vault.id
-
-  managed_identity_create              = false
-  managed_identity_id                  = module.my_azurekv_secret_store.managed_identity_id
-  federated_identity_credential_create = false
-  key_vault_access_create              = false
-}
-```
-
-Then [configure the Operator for Workload Identity](#configure-the-operator-for-workload-identity) using the outputs of the default store.
 
 #### One Key Vault per Environment
 
 If each Environment-local store uses its own Key Vault, no other secret store uses the access to it. Let each instance of the module grant the managed identity read-only access to its Key Vault, i.e. leave `key_vault_access_create` at `true`. The managed identity and its federated identity credential are still shared, though, as the [Operator uses only one managed identity](#configure-the-operator-for-workload-identity).
 
-This example uses the managed identity created by the module instance of the [default secret store](#same-key-vault-as-the-default-secret-store). If there is no default secret store using Workload Identity, create the managed identity and its federated identity credential yourself as shown in [One Key Vault shared by the Environments](#one-key-vault-shared-by-the-environments).
+This example uses the managed identity created by the module instance of the [default secret store](#common-usage-default-secret-store-with-workload-identity). If there is no default secret store using Workload Identity, create the managed identity and its federated identity credential yourself as shown in [One Key Vault shared by the Environments](#one-key-vault-shared-by-the-environments).
 
 ```hcl
 locals {
@@ -326,11 +254,18 @@ module "my_environment_azurekv_secret_store" {
 
 With `auth_method = "service_principal"`, each secret store references its own credentials, so the Environment-local stores do not share an identity. Each instance of the module creates a dedicated service principal and client secret, a Kubernetes Secret holding them in the Environment namespace, and the access of the service principal to the Key Vault. The role assignments or access policies of different service principals do not conflict, so this works for any combination of Key Vaults, and removing one secret store only revokes the access of its own service principal. All inputs about the managed identity, the federated identity credential, and the Key Vault access can keep their defaults.
 
-The secret stores may use the same Key Vault as a default secret store using Workload Identity, as in this example, or any other Key Vault.
+This example gives each Environment its own Key Vault, so that each service principal can only read the secrets of its own Environment.
 
 ```hcl
 locals {
   environment_namespaces = toset(["my-app-development", "my-app-staging"])
+}
+
+# One Key Vault per Environment
+resource "azurerm_key_vault" "environment" {
+  for_each = local.environment_namespaces
+
+  # ...
 }
 
 module "my_environment_azurekv_secret_store" {
@@ -346,14 +281,14 @@ module "my_environment_azurekv_secret_store" {
   secret_store_default      = false
   secret_store_cluster_wide = false
   secret_store_namespace    = each.key
-  key_vault_id              = azurerm_key_vault.my_key_vault.id
+  key_vault_id              = azurerm_key_vault.environment[each.key].id
 
   auth_method = "service_principal"
 }
 ```
 
 > [!WARNING]
-> The Kubernetes Secret holding the client ID and secret is located in the Environment namespace. Anyone who can read Secrets in that namespace can use the service principal, and thus read the secrets in the Key Vault of the secret store. Using a dedicated service principal per secret store limits this to one secret store. The client secret is also stored in the OpenTofu/Terraform state, see [Use a service principal with static credentials](#use-a-service-principal-with-static-credentials).
+> The Kubernetes Secret holding the client ID and secret is located in the Environment namespace. Anyone who can read Secrets in that namespace can use the service principal, and thus read the secrets in the Key Vault of that Environment. Using a dedicated service principal per secret store limits this to one secret store. The client secret is also stored in the OpenTofu/Terraform state, see [Use a service principal with static credentials](#use-a-service-principal-with-static-credentials).
 
 ### Key Vault with the access policy permission model
 
