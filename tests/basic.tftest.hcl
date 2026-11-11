@@ -1,5 +1,12 @@
 # Mock all providers so the tests run without access to Azure, Microsoft Entra ID or a Kubernetes cluster
-mock_provider "kubernetes" {}
+mock_provider "kubernetes" {
+  # The SecretStore CRD is present on the cluster
+  mock_data "kubernetes_resources" {
+    defaults = {
+      objects = [{ metadata = { name = "secretstores.humanitec.io" } }]
+    }
+  }
+}
 mock_provider "random" {
   # The mocked result does not honor the length attribute
   mock_resource "random_string" {
@@ -192,31 +199,31 @@ run "defaults" {
   # Secret store
   assert {
     condition = (
-      kubernetes_manifest.secret_store.manifest.apiVersion == "humanitec.io/v1alpha1" &&
-      kubernetes_manifest.secret_store.manifest.kind == "SecretStore"
+      kubernetes_manifest.secret_store[0].manifest.apiVersion == "humanitec.io/v1alpha1" &&
+      kubernetes_manifest.secret_store[0].manifest.kind == "SecretStore"
     )
     error_message = "Secret store should be a humanitec.io/v1alpha1 SecretStore"
   }
   assert {
     condition = (
-      kubernetes_manifest.secret_store.manifest.metadata.name == "my-azurekv" &&
-      kubernetes_manifest.secret_store.manifest.metadata.namespace == "humanitec-operator-system"
+      kubernetes_manifest.secret_store[0].manifest.metadata.name == "my-azurekv" &&
+      kubernetes_manifest.secret_store[0].manifest.metadata.namespace == "humanitec-operator-system"
     )
     error_message = "Secret store should be named secret_store_id and be cluster-wide in the Operator namespace by default"
   }
   assert {
-    condition     = kubernetes_manifest.secret_store.manifest.metadata.labels["app.humanitec.io/default-store"] == "true" && length(kubernetes_manifest.secret_store.manifest.metadata.labels) == 1
+    condition     = kubernetes_manifest.secret_store[0].manifest.metadata.labels["app.humanitec.io/default-store"] == "true" && length(kubernetes_manifest.secret_store[0].manifest.metadata.labels) == 1
     error_message = "Secret store should be labelled as the default store by default"
   }
   assert {
     condition = (
-      kubernetes_manifest.secret_store.manifest.spec.azurekv.url == "https://my-key-vault.vault.azure.net/" &&
-      kubernetes_manifest.secret_store.manifest.spec.azurekv.tenantID == "11111111-1111-1111-1111-111111111111"
+      kubernetes_manifest.secret_store[0].manifest.spec.azurekv.url == "https://my-key-vault.vault.azure.net/" &&
+      kubernetes_manifest.secret_store[0].manifest.spec.azurekv.tenantID == "11111111-1111-1111-1111-111111111111"
     )
     error_message = "Secret store should use the URI and tenant ID of the Key Vault"
   }
   assert {
-    condition     = kubernetes_manifest.secret_store.manifest.spec.azurekv.auth == {}
+    condition     = kubernetes_manifest.secret_store[0].manifest.spec.azurekv.auth == {}
     error_message = "Secret store should have an empty auth object with Workload Identity. A map cannot be converted to the SecretStore CRD schema by kubernetes_manifest"
   }
   assert {
@@ -312,8 +319,8 @@ run "generated_secret_store_id" {
     error_message = "The random suffix of the secret store ID should consist of lowercase letters only"
   }
   assert {
-    condition     = kubernetes_manifest.secret_store.manifest.metadata.name == "azurekv-abcd"
-    error_message = "Secret store ID should be generated as azurekv-<random>, got ${kubernetes_manifest.secret_store.manifest.metadata.name}"
+    condition     = kubernetes_manifest.secret_store[0].manifest.metadata.name == "azurekv-abcd"
+    error_message = "Secret store ID should be generated as azurekv-<random>, got ${kubernetes_manifest.secret_store[0].manifest.metadata.name}"
   }
   assert {
     condition     = output.secret_store_id == "azurekv-abcd"
@@ -355,11 +362,11 @@ run "non_default_store" {
   }
 
   assert {
-    condition     = !can(kubernetes_manifest.secret_store.manifest.metadata.labels)
+    condition     = !can(kubernetes_manifest.secret_store[0].manifest.metadata.labels)
     error_message = "Non-default secret store should not be labelled as the default store"
   }
   assert {
-    condition     = kubernetes_manifest.secret_store.manifest.metadata.namespace == "humanitec-operator-system"
+    condition     = kubernetes_manifest.secret_store[0].manifest.metadata.namespace == "humanitec-operator-system"
     error_message = "Non-default secret store should still be cluster-wide by default"
   }
   assert {
@@ -382,11 +389,11 @@ run "environment_local_store" {
   }
 
   assert {
-    condition     = kubernetes_manifest.secret_store.manifest.metadata.namespace == "my-app-development"
+    condition     = kubernetes_manifest.secret_store[0].manifest.metadata.namespace == "my-app-development"
     error_message = "Environment-local secret store should be created in secret_store_namespace"
   }
   assert {
-    condition     = !can(kubernetes_manifest.secret_store.manifest.metadata.labels)
+    condition     = !can(kubernetes_manifest.secret_store[0].manifest.metadata.labels)
     error_message = "Environment-local secret store should not be labelled as the default store"
   }
   assert {
@@ -515,7 +522,7 @@ run "shared_identity_without_key_vault_access" {
   }
   assert {
     condition = (
-      kubernetes_manifest.secret_store.manifest.metadata.namespace == "my-app-development" &&
+      kubernetes_manifest.secret_store[0].manifest.metadata.namespace == "my-app-development" &&
       output.operator_principal_id == "55555555-5555-5555-5555-555555555555"
     )
     error_message = "Secret store should still be created for the existing managed identity"
@@ -638,8 +645,8 @@ run "complete_create_managed_identity" {
   # Secret store
   assert {
     condition = (
-      kubernetes_manifest.secret_store.manifest.metadata.name == "complete-azurekv" &&
-      kubernetes_manifest.secret_store.manifest.metadata.namespace == "my-operator"
+      kubernetes_manifest.secret_store[0].manifest.metadata.name == "complete-azurekv" &&
+      kubernetes_manifest.secret_store[0].manifest.metadata.namespace == "my-operator"
     )
     error_message = "Secret store should use secret_store_id and operator_namespace"
   }
@@ -792,7 +799,7 @@ run "complete_create_service_principal" {
 
   # Secret store
   assert {
-    condition = kubernetes_manifest.secret_store.manifest.spec.azurekv.auth == {
+    condition = kubernetes_manifest.secret_store[0].manifest.spec.azurekv.auth == {
       clientIDSecretRef     = { name = "my-credentials", key = "ClientID" }
       clientSecretSecretRef = { name = "my-credentials", key = "ClientSecret" }
     }
@@ -1029,6 +1036,96 @@ run "key_vault_id_is_case_insensitive" {
       data.azurerm_key_vault.secret_store.resource_group_name == "my-rg"
     )
     error_message = "Key Vault should be read from a resource ID in a different letter case"
+  }
+}
+
+# SecretStore CRD not yet present on the cluster
+
+run "missing_crd" {
+  command = apply
+
+  override_data {
+    target = data.kubernetes_resources.secret_store_crd
+    values = {
+      objects = []
+    }
+  }
+
+  # The check only warns, so the run continues
+  expect_failures = [check.secret_store_crd]
+
+  assert {
+    condition     = length(kubernetes_manifest.secret_store) == 0
+    error_message = "SecretStore should not be created without the CRD"
+  }
+  assert {
+    condition     = output.secret_store_ready == false
+    error_message = "secret_store_ready output should be false without the CRD"
+  }
+  assert {
+    condition     = output.secret_store_id == "my-azurekv" && output.secret_store_namespace == "humanitec-operator-system"
+    error_message = "Secret store outputs should be set without the CRD"
+  }
+  assert {
+    condition = (
+      length(azurerm_user_assigned_identity.operator) == 1 &&
+      length(azurerm_federated_identity_credential.operator) == 1 &&
+      length(azurerm_role_assignment.operator) == 1
+    )
+    error_message = "Azure objects should be created without the CRD"
+  }
+  assert {
+    condition     = output.operator_serviceaccount_annotations == tomap({ "azure.workload.identity/client-id" = "22222222-2222-2222-2222-222222222222" })
+    error_message = "Operator service account annotations output should be set without the CRD, so that the Operator can be installed with it"
+  }
+}
+
+run "missing_crd_with_service_principal" {
+  command = apply
+
+  variables {
+    auth_method         = "service_principal"
+    aks_oidc_issuer_url = null
+  }
+
+  override_data {
+    target = data.kubernetes_resources.secret_store_crd
+    values = {
+      objects = []
+    }
+  }
+
+  expect_failures = [check.secret_store_crd]
+
+  assert {
+    condition     = length(kubernetes_secret_v1.operator_credentials) == 0
+    error_message = "Credentials Secret should not be created without the CRD, as the namespace may not exist"
+  }
+  assert {
+    condition = (
+      length(azuread_application.operator) == 1 &&
+      length(azuread_service_principal.operator) == 1 &&
+      length(azuread_application_password.operator) == 1
+    )
+    error_message = "Application, service principal and client secret should be created without the CRD"
+  }
+}
+
+run "crd_being_deleted" {
+  command = apply
+
+  override_data {
+    target = data.kubernetes_resources.secret_store_crd
+    values = {
+      objects = [{ metadata = { name = "secretstores.humanitec.io", deletionTimestamp = "2026-01-01T00:00:00Z" } }]
+    }
+  }
+
+  expect_failures = [check.secret_store_crd]
+
+  assert {
+    condition     = length(kubernetes_manifest.secret_store) == 0
+    error_message = "SecretStore should not be created while the CRD is being deleted"
   }
 }
 

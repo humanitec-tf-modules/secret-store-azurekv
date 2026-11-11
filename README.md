@@ -19,7 +19,7 @@ You can also bring your own managed identity or service principal instead of hav
 
 Prerequisites:
 
-- The Humanitec Operator is installed on the cluster before you plan the module. See [Installation order](#installation-order)
+- The Humanitec Operator is installed on the cluster, either beforehand or in the same configuration as the module. See [Installation order](#installation-order)
 - If you use Workload Identity, the [OIDC issuer and Workload Identity](https://learn.microsoft.com/azure/aks/workload-identity-deploy-cluster) are enabled on the AKS cluster
 - For an Environment-local secret store, the Environment namespace exists
 
@@ -27,14 +27,21 @@ The Key Vault must be located in the Azure subscription of the `azurerm` provide
 
 ## Installation order
 
-The module creates the `SecretStore` resource using a `kubernetes_manifest`, which reads the `SecretStore` custom resource definition (CRD) from the cluster during planning. The Humanitec Operator Helm chart installs this CRD. Therefore, the Operator must already be installed when you plan the module.
+The module creates the `SecretStore` resource using a `kubernetes_manifest`, which reads the `SecretStore` custom resource definition (CRD) from the cluster during planning. The Humanitec Operator installs this CRD.
 
-If you install the Operator in the same OpenTofu/Terraform configuration as the present module, e.g. via a `helm_release`, apply the Operator before you add the module, e.g. in a separate stage or using `-target`. Adding a `depends_on` on the module is not sufficient, as the CRD is required during planning already.
+So that you can install the Operator in the same OpenTofu/Terraform configuration as the module, the module checks for the CRD during planning. If the CRD is missing, the module skips the `SecretStore` and the Kubernetes Secret holding service principal credentials. It still creates the Azure and Microsoft Entra ID objects, shows the warning `SecretStore CRD not found`, and returns `false` in the `secret_store_ready` output.
+
+On a new cluster, this takes two consecutive applies without any configuration change in between:
+
+1. The first apply installs the Operator, and with it the CRD, and creates the Azure and Microsoft Entra ID objects. The warning is expected.
+2. The second apply finds the CRD and creates the `SecretStore`.
+
+If the Operator is already installed, a single apply is sufficient.
 
 > [!NOTE]
 > **Architectural decision**
 >
-> A provider such as [alekc/kubectl](https://registry.terraform.io/providers/alekc/kubectl), which does not require the CRD to exist at plan time, would allow a single apply. However, it would introduce another external community provider, require users to configure and pass in a fourth provider, and require an additional module input to order the SecretStore after the Operator installation. It would also need retry handling, as a newly installed CRD can take a moment before the API server accepts resources of its type. The module therefore accepts the two-pass limitation. It only applies when the Operator is installed in the same run as the module, e.g. on a new cluster.
+> A provider such as [alekc/kubectl](https://registry.terraform.io/providers/alekc/kubectl), which does not require the CRD to exist at plan time, would allow a single apply. However, it would introduce another external community provider, require users to configure and pass in a fourth provider, and require an additional module input to order the SecretStore after the Operator installation. It would also need retry handling, as a newly installed CRD can take a moment before the API server accepts resources of its type. The module therefore checks for the CRD instead and accepts a second apply when the Operator is installed in the same run as the module, e.g. on a new cluster.
 
 With Workload Identity, the Operator service account also needs an annotation with the client ID of the managed identity, and the Operator Pod needs a label. See [Configure the Operator for Workload Identity](#configure-the-operator-for-workload-identity) for how to provide them.
 
@@ -73,7 +80,7 @@ Then [configure the Operator for Workload Identity](#configure-the-operator-for-
 
 With Workload Identity, the Operator service account must be annotated with the client ID of the managed identity, and the Operator Pod must carry the label `azure.workload.identity/use: "true"`. The module does not modify the Operator installation, so you need to set both via the Helm values of the Operator. Azure generates the client ID when it creates the managed identity, so it is only known once the identity exists.
 
-Use the `operator_serviceaccount_annotations` and `operator_pod_labels` outputs of the module in the Helm values of the existing Operator installation:
+Use the `operator_serviceaccount_annotations` and `operator_pod_labels` outputs of the module in the Helm values of the Operator installation:
 
 ```hcl
 locals {
@@ -99,13 +106,15 @@ controllerManager:
     azure.workload.identity/use: "true"
 ```
 
-Then restart the Operator to pick up the managed identity:
+If you install the Operator in the same configuration as the module, the first apply then creates the managed identity before it installs the Operator with these values (see [Installation order](#installation-order)).
+
+If you install the Operator separately and before the module, update its Helm values from the outputs once the module has run. Alternatively, create the managed identity before the Operator and [bring your own managed identity](#bring-your-own-managed-identity), so that you know its client ID when you install the Operator.
+
+If you change the Helm values of a running Operator, restart the Operator to pick up the managed identity:
 
 ```shell
 kubectl rollout restart deployment -n humanitec-operator-system humanitec-operator-controller-manager
 ```
-
-To set the Helm values when you first install the Operator instead, create the managed identity before the Operator and [bring your own managed identity](#bring-your-own-managed-identity).
 
 > [!IMPORTANT]
 > The Operator uses exactly one managed identity: the one whose client ID is annotated on its service account. All secret stores on the cluster that use Workload Identity therefore share that managed identity, and its single federated identity credential for the Operator service account. Let at most one instance of the module create the managed identity and the federated identity credential, and pass the managed identity in to all other instances with `managed_identity_create = false` and `federated_identity_credential_create = false`. See [Non-default secret store](#non-default-secret-store) and [Several Environment-local secret stores](#several-environment-local-secret-stores).
@@ -461,7 +470,7 @@ The client ID must not be ephemeral, as the module keeps it in the state to dete
 ## Requirements
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.11.0 |
 | <a name="requirement_azuread"></a> [azuread](#requirement\_azuread) | ~> 3 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.65.0, < 5.0.0 |
@@ -475,7 +484,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-|------|------|
+| ---- | ---- |
 | [azuread_application.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/application) | resource |
 | [azuread_application_password.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/application_password) | resource |
 | [azuread_service_principal.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/service_principal) | resource |
@@ -494,11 +503,12 @@ No modules.
 | [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
 | [azurerm_key_vault.secret_store](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/key_vault) | data source |
 | [azurerm_user_assigned_identity.operator](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/user_assigned_identity) | data source |
+| [kubernetes_resources.secret_store_crd](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/data-sources/resources) | data source |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_aks_oidc_issuer_url"></a> [aks\_oidc\_issuer\_url](#input\_aks\_oidc\_issuer\_url) | URL of the OIDC issuer of the AKS cluster hosting the Operator, e.g. the `oidc_issuer_url` attribute of an `azurerm_kubernetes_cluster`. The cluster must have the OIDC issuer and Workload Identity enabled. Required if `auth_method` is `workload_identity` and `federated_identity_credential_create` is `true`. Optional otherwise: if set, it is included in the `federated_identity_credential` output. Must not be set if `auth_method` is `service_principal`. | `string` | `null` | no |
 | <a name="input_auth_method"></a> [auth\_method](#input\_auth\_method) | How the Operator authenticates against Azure Key Vault. `workload_identity` (recommended): the Operator uses a user-assigned managed identity via Microsoft Entra Workload ID. `service_principal`: the Operator uses static credentials of a service principal, stored in a Kubernetes Secret. | `string` | `"workload_identity"` | no |
 | <a name="input_federated_identity_credential_create"></a> [federated\_identity\_credential\_create](#input\_federated\_identity\_credential\_create) | Whether to create the federated identity credential on the managed identity, allowing the Operator service account to use it via Workload Identity. Only used if `auth_method` is `workload_identity`. Set to `false` if you manage the federated identity credential yourself, e.g. because an existing managed identity already has one for the Operator service account. Use the `federated_identity_credential` output to configure it. | `bool` | `true` | no |
@@ -530,7 +540,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ---- | ----------- |
 | <a name="output_federated_identity_credential"></a> [federated\_identity\_credential](#output\_federated\_identity\_credential) | Issuer, subject, and audience of the federated identity credential allowing the Operator service account to use the managed identity. If `federated_identity_credential_create` is `false`, configure a federated identity credential with these values on the managed identity yourself. The issuer is `null` if `aks_oidc_issuer_url` is not set. Returns `null` if `auth_method` is not `workload_identity`. |
 | <a name="output_federated_identity_credential_id"></a> [federated\_identity\_credential\_id](#output\_federated\_identity\_credential\_id) | ID of the federated identity credential created by the module. Returns `null` if `auth_method` is not `workload_identity` or `federated_identity_credential_create` is `false`. |
 | <a name="output_key_vault_access_policy_id"></a> [key\_vault\_access\_policy\_id](#output\_key\_vault\_access\_policy\_id) | ID of the Key Vault access policy granting the Operator access to the Key Vault. Returns `null` if `key_vault_access_create` is `false` or `key_vault_rbac_authorization_enabled` is `true`. |
@@ -549,6 +559,7 @@ No modules.
 | <a name="output_operator_serviceaccount_annotations"></a> [operator\_serviceaccount\_annotations](#output\_operator\_serviceaccount\_annotations) | Annotations to set on the Operator service account so that it uses the managed identity via Workload Identity, e.g. via the `controllerManager.serviceAccount.annotations` value of the Operator Helm chart. Restart the Operator after changing them. Returns an empty map if `auth_method` is not `workload_identity`. |
 | <a name="output_secret_store_id"></a> [secret\_store\_id](#output\_secret\_store\_id) | ID of the secret store, i.e. the name of the Kubernetes `SecretStore` resource. This is either `secret_store_id` or the generated ID. Use it as the `store` in secret references. |
 | <a name="output_secret_store_namespace"></a> [secret\_store\_namespace](#output\_secret\_store\_namespace) | Name of the Kubernetes namespace of the `SecretStore` resource. This is the Operator namespace for a cluster-wide store, or the Environment namespace for an Environment-local store. |
+| <a name="output_secret_store_ready"></a> [secret\_store\_ready](#output\_secret\_store\_ready) | Whether the module manages the `SecretStore` resource. This is `false` if the `SecretStore` CRD was not present on the cluster during planning. In that case, apply the configuration again once the Operator is installed. See [Installation order](#installation-order). |
 | <a name="output_service_principal_client_id"></a> [service\_principal\_client\_id](#output\_service\_principal\_client\_id) | Client (application) ID of the service principal used by the Operator. Returns `null` if `auth_method` is not `service_principal`. |
 | <a name="output_service_principal_credentials_secret_name"></a> [service\_principal\_credentials\_secret\_name](#output\_service\_principal\_credentials\_secret\_name) | Name of the Kubernetes Secret holding the client ID and client secret of the service principal, located in the `secret_store_namespace`. Returns `null` if `auth_method` is not `service_principal`. |
 | <a name="output_service_principal_name"></a> [service\_principal\_name](#output\_service\_principal\_name) | Display name of the service principal used by the Operator. Returns `null` if `auth_method` is not `service_principal`. |
