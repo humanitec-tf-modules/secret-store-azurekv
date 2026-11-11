@@ -141,13 +141,13 @@ module "my_other_azurekv_secret_store" {
 
 An Environment-local secret store is located in the namespace of an Environment, so that only Deployments into that namespace can use it. It cannot be the default store, so `secret_store_default` must be set to `false`, and the Operator gets read-only access to it.
 
-These configurations create one Environment-local secret store per Environment namespace. The Operator reads the secrets on behalf of the Environments, so all secret stores use the identity of the Operator. As the [Operator uses only one managed identity](#configure-the-operator-for-workload-identity), all secret stores necessarily share it, as well as its federated identity credential. Azure allows only one federated identity credential with the same issuer and subject on a managed identity, and the subject is always the Operator service account. So pass in the managed identity, and set `federated_identity_credential_create` to `false`.
+These configurations create one Environment-local secret store per Environment namespace. The Operator reads the secrets on behalf of the Environments and [uses only one managed identity](#configure-the-operator-for-workload-identity), so all secret stores share that identity and its federated identity credential. Azure allows only one federated identity credential with the same issuer and subject on a managed identity, and the subject is always the Operator service account. So pass in the managed identity, and set `federated_identity_credential_create` to `false`.
 
 Whether the Environment-local stores need to grant the managed identity access to the Key Vault depends on which Key Vault they use. If the Environment-local stores use service principals instead of Workload Identity, none of this applies, see [With service principals](#with-service-principals).
 
 #### One Key Vault per Environment
 
-If each Environment-local store uses its own Key Vault, no other secret store uses the access to it. Let each instance of the module grant the managed identity read-only access to its Key Vault, i.e. leave `key_vault_access_create` at `true`. The managed identity and its federated identity credential are still shared, though, as the [Operator uses only one managed identity](#configure-the-operator-for-workload-identity).
+If each Environment-local store uses its own Key Vault, no other secret store uses the access to it. Let each instance of the module grant the managed identity read-only access to its Key Vault, i.e. leave `key_vault_access_create` at `true`. The managed identity and its federated identity credential are still shared.
 
 This example uses the managed identity created by the module instance of the [default secret store](#common-usage-default-secret-store-with-workload-identity). If there is no default secret store using Workload Identity, create the managed identity and its federated identity credential yourself as shown in [One Key Vault shared by the Environments](#one-key-vault-shared-by-the-environments).
 
