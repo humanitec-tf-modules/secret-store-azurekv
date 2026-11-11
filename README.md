@@ -470,7 +470,7 @@ The client ID must not be ephemeral, as the module keeps it in the state to dete
 ## Requirements
 
 | Name | Version |
-| ---- | ------- |
+|------|---------|
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.11.0 |
 | <a name="requirement_azuread"></a> [azuread](#requirement\_azuread) | ~> 3 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.65.0, < 5.0.0 |
@@ -484,7 +484,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-| ---- | ---- |
+|------|------|
 | [azuread_application.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/application) | resource |
 | [azuread_application_password.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/application_password) | resource |
 | [azuread_service_principal.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/service_principal) | resource |
@@ -508,7 +508,7 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-| ---- | ----------- | ---- | ------- | :------: |
+|------|-------------|------|---------|:--------:|
 | <a name="input_aks_oidc_issuer_url"></a> [aks\_oidc\_issuer\_url](#input\_aks\_oidc\_issuer\_url) | URL of the OIDC issuer of the AKS cluster hosting the Operator, e.g. the `oidc_issuer_url` attribute of an `azurerm_kubernetes_cluster`. The cluster must have the OIDC issuer and Workload Identity enabled. Required if `auth_method` is `workload_identity` and `federated_identity_credential_create` is `true`. Optional otherwise: if set, it is included in the `federated_identity_credential` output. Must not be set if `auth_method` is `service_principal`. | `string` | `null` | no |
 | <a name="input_auth_method"></a> [auth\_method](#input\_auth\_method) | How the Operator authenticates against Azure Key Vault. `workload_identity` (recommended): the Operator uses a user-assigned managed identity via Microsoft Entra Workload ID. `service_principal`: the Operator uses static credentials of a service principal, stored in a Kubernetes Secret. | `string` | `"workload_identity"` | no |
 | <a name="input_federated_identity_credential_create"></a> [federated\_identity\_credential\_create](#input\_federated\_identity\_credential\_create) | Whether to create the federated identity credential on the managed identity, allowing the Operator service account to use it via Workload Identity. Only used if `auth_method` is `workload_identity`. Set to `false` if you manage the federated identity credential yourself, e.g. because an existing managed identity already has one for the Operator service account. Use the `federated_identity_credential` output to configure it. | `bool` | `true` | no |
@@ -540,7 +540,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-| ---- | ----------- |
+|------|-------------|
 | <a name="output_federated_identity_credential"></a> [federated\_identity\_credential](#output\_federated\_identity\_credential) | Issuer, subject, and audience of the federated identity credential allowing the Operator service account to use the managed identity. If `federated_identity_credential_create` is `false`, configure a federated identity credential with these values on the managed identity yourself. The issuer is `null` if `aks_oidc_issuer_url` is not set. Returns `null` if `auth_method` is not `workload_identity`. |
 | <a name="output_federated_identity_credential_id"></a> [federated\_identity\_credential\_id](#output\_federated\_identity\_credential\_id) | ID of the federated identity credential created by the module. Returns `null` if `auth_method` is not `workload_identity` or `federated_identity_credential_create` is `false`. |
 | <a name="output_key_vault_access_policy_id"></a> [key\_vault\_access\_policy\_id](#output\_key\_vault\_access\_policy\_id) | ID of the Key Vault access policy granting the Operator access to the Key Vault. Returns `null` if `key_vault_access_create` is `false` or `key_vault_rbac_authorization_enabled` is `true`. |
