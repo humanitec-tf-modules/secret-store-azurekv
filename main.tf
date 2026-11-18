@@ -38,13 +38,18 @@ locals {
   key_vault_role_definition_name = var.secret_store_default ? "Key Vault Secrets Officer" : "Key Vault Secrets User"
   key_vault_secret_permissions   = var.secret_store_default ? ["Get", "Set", "Delete", "Recover"] : ["Get"]
 
-  # Managed identity and service principal names only contain characters of the secret store ID and "-",
-  # which Azure allows, and stay below the maximum length of 120 characters, so no truncation is needed.
+  # Generated names of the managed identity and the service principal. They only contain characters of the secret store ID
+  # and "-", which Azure allows, and stay below the maximum length of 120 characters, so no truncation is needed.
+  # The managed identity name does not contain the secret store ID: renaming the store would replace the managed identity,
+  # giving it a new client ID that breaks the Operator service account annotation and the access of other secret stores
+  # sharing it. The display name of the service principal changes in place, and each store has its own service principal,
+  # so it contains the secret store ID to tell them apart.
   identity_name_suffix_required = (
     (local.create_managed_identity && var.managed_identity_name == null) ||
     (local.create_service_principal && var.service_principal_name == null)
   )
-  identity_generated_name = local.identity_name_suffix_required ? "humanitec-operator-${local.secret_store_id}-${random_string.identity_name_suffix[0].result}" : null
+  managed_identity_generated_name  = local.identity_name_suffix_required ? "humanitec-operator-${random_string.identity_name_suffix[0].result}" : null
+  service_principal_generated_name = local.identity_name_suffix_required ? "humanitec-operator-${local.secret_store_id}-${random_string.identity_name_suffix[0].result}" : null
 
   # Subscription, resource group, and name of an existing managed identity, parsed from its ID
   existing_managed_identity_id_parts = var.managed_identity_id != null ? regex(local.managed_identity_id_pattern, var.managed_identity_id) : null
@@ -140,7 +145,7 @@ data "azurerm_key_vault" "secret_store" {
 
 resource "azurerm_user_assigned_identity" "operator" {
   count               = local.create_managed_identity ? 1 : 0
-  name                = coalesce(var.managed_identity_name, local.identity_generated_name)
+  name                = coalesce(var.managed_identity_name, local.managed_identity_generated_name)
   resource_group_name = coalesce(var.managed_identity_resource_group_name, local.key_vault_id_parts.resource_group_name)
   location            = coalesce(var.managed_identity_location, data.azurerm_key_vault.secret_store.location)
   tags                = var.managed_identity_tags
@@ -161,8 +166,10 @@ data "azurerm_user_assigned_identity" "operator" {
 
 # Federated identity credential allowing the Operator service account to use the managed identity via Workload Identity
 resource "azurerm_federated_identity_credential" "operator" {
-  count                     = local.use_workload_identity && var.federated_identity_credential_create ? 1 : 0
-  name                      = coalesce(var.federated_identity_credential_name, "humanitec-operator-${local.secret_store_id}")
+  count = local.use_workload_identity && var.federated_identity_credential_create ? 1 : 0
+  # The name does not contain the secret store ID, so that renaming the store does not replace the credential, which would
+  # interrupt Workload Identity for all secret stores sharing the managed identity
+  name                      = coalesce(var.federated_identity_credential_name, "humanitec-operator")
   user_assigned_identity_id = local.managed_identity_id
   issuer                    = local.federated_identity_credential.issuer
   subject                   = local.federated_identity_credential.subject
@@ -177,7 +184,7 @@ data "azuread_client_config" "current" {
 
 resource "azuread_application" "operator" {
   count        = local.create_service_principal ? 1 : 0
-  display_name = coalesce(var.service_principal_name, local.identity_generated_name)
+  display_name = coalesce(var.service_principal_name, local.service_principal_generated_name)
   description  = "Humanitec Operator access to the Azure Key Vault secret store ${local.secret_store_id}"
   owners       = local.service_principal_owners
 

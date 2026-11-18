@@ -130,8 +130,8 @@ run "defaults" {
     error_message = "Managed identity should be created by default"
   }
   assert {
-    condition     = azurerm_user_assigned_identity.operator[0].name == "humanitec-operator-my-azurekv-abcd"
-    error_message = "Managed identity name should be generated as humanitec-operator-<secret_store_id>-<suffix>, got ${azurerm_user_assigned_identity.operator[0].name}"
+    condition     = azurerm_user_assigned_identity.operator[0].name == "humanitec-operator-abcd"
+    error_message = "Managed identity name should be generated as humanitec-operator-<suffix>, without the secret store ID, got ${azurerm_user_assigned_identity.operator[0].name}"
   }
   assert {
     condition = (
@@ -148,10 +148,10 @@ run "defaults" {
   # Federated identity credential
   assert {
     condition = (
-      azurerm_federated_identity_credential.operator[0].name == "humanitec-operator-my-azurekv" &&
+      azurerm_federated_identity_credential.operator[0].name == "humanitec-operator" &&
       azurerm_federated_identity_credential.operator[0].user_assigned_identity_id == azurerm_user_assigned_identity.operator[0].id
     )
-    error_message = "Federated identity credential should be named humanitec-operator-<secret_store_id> and be created on the new managed identity"
+    error_message = "Federated identity credential should be named humanitec-operator, without the secret store ID, and be created on the new managed identity"
   }
   assert {
     condition = (
@@ -258,7 +258,7 @@ run "defaults" {
   assert {
     condition = (
       output.managed_identity_id == azurerm_user_assigned_identity.operator[0].id &&
-      output.managed_identity_name == "humanitec-operator-my-azurekv-abcd" &&
+      output.managed_identity_name == "humanitec-operator-abcd" &&
       output.managed_identity_client_id == "22222222-2222-2222-2222-222222222222" &&
       output.managed_identity_principal_id == "33333333-3333-3333-3333-333333333333" &&
       output.operator_client_id == "22222222-2222-2222-2222-222222222222" &&
@@ -328,10 +328,10 @@ run "generated_secret_store_id" {
   }
   assert {
     condition = (
-      azurerm_user_assigned_identity.operator[0].name == "humanitec-operator-azurekv-abcd-abcd" &&
-      azurerm_federated_identity_credential.operator[0].name == "humanitec-operator-azurekv-abcd"
+      azurerm_user_assigned_identity.operator[0].name == "humanitec-operator-abcd" &&
+      azurerm_federated_identity_credential.operator[0].name == "humanitec-operator"
     )
-    error_message = "Generated identity names should be based on the generated secret store ID"
+    error_message = "Generated managed identity and federated identity credential names should not contain the generated secret store ID"
   }
 }
 

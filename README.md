@@ -339,7 +339,7 @@ module "my_azurekv_secret_store" {
   key_vault_id        = azurerm_key_vault.my_key_vault.id
   aks_oidc_issuer_url = azurerm_kubernetes_cluster.my_aks_cluster.oidc_issuer_url
 
-  managed_identity_name                = "humanitec-operator-my-azurekv"
+  managed_identity_name                = "humanitec-operator"
   managed_identity_resource_group_name = azurerm_resource_group.my_aks_rg.name
   managed_identity_location            = "westeurope"
   managed_identity_tags = {
@@ -472,7 +472,7 @@ The client ID must not be ephemeral, as the module keeps it in the state to dete
 ## Requirements
 
 | Name | Version |
-|------|---------|
+| ---- | ------- |
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.11.0 |
 | <a name="requirement_azuread"></a> [azuread](#requirement\_azuread) | ~> 3 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.65.0, < 5.0.0 |
@@ -486,7 +486,7 @@ No modules.
 ## Resources
 
 | Name | Type |
-|------|------|
+| ---- | ---- |
 | [azuread_application.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/application) | resource |
 | [azuread_application_password.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/application_password) | resource |
 | [azuread_service_principal.operator](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs/resources/service_principal) | resource |
@@ -510,18 +510,18 @@ No modules.
 ## Inputs
 
 | Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
+| ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_aks_oidc_issuer_url"></a> [aks\_oidc\_issuer\_url](#input\_aks\_oidc\_issuer\_url) | URL of the OIDC issuer of the AKS cluster hosting the Operator, e.g. the `oidc_issuer_url` attribute of an `azurerm_kubernetes_cluster`. The cluster must have the OIDC issuer and Workload Identity enabled. Required if `auth_method` is `workload_identity` and `federated_identity_credential_create` is `true`. Optional otherwise: if set, it is included in the `federated_identity_credential` output. Must not be set if `auth_method` is `service_principal`. | `string` | `null` | no |
 | <a name="input_auth_method"></a> [auth\_method](#input\_auth\_method) | How the Operator authenticates against Azure Key Vault. `workload_identity` (recommended): the Operator uses a user-assigned managed identity via Microsoft Entra Workload ID. `service_principal`: the Operator uses static credentials of a service principal, stored in a Kubernetes Secret. | `string` | `"workload_identity"` | no |
 | <a name="input_federated_identity_credential_create"></a> [federated\_identity\_credential\_create](#input\_federated\_identity\_credential\_create) | Whether to create the federated identity credential on the managed identity, allowing the Operator service account to use it via Workload Identity. Only used if `auth_method` is `workload_identity`. Set to `false` if you manage the federated identity credential yourself, e.g. because an existing managed identity already has one for the Operator service account. Use the `federated_identity_credential` output to configure it. | `bool` | `true` | no |
-| <a name="input_federated_identity_credential_name"></a> [federated\_identity\_credential\_name](#input\_federated\_identity\_credential\_name) | Name of the federated identity credential to create on the managed identity. Only used if `auth_method` is `workload_identity` and `federated_identity_credential_create` is `true`. If not set, the name is `humanitec-operator-<secret store ID>`. | `string` | `null` | no |
+| <a name="input_federated_identity_credential_name"></a> [federated\_identity\_credential\_name](#input\_federated\_identity\_credential\_name) | Name of the federated identity credential to create on the managed identity. Only used if `auth_method` is `workload_identity` and `federated_identity_credential_create` is `true`. If not set, the name is `humanitec-operator`. | `string` | `null` | no |
 | <a name="input_key_vault_access_create"></a> [key\_vault\_access\_create](#input\_key\_vault\_access\_create) | Whether to grant the Operator identity access to the Key Vault, via a role assignment or an access policy depending on `key_vault_rbac_authorization_enabled`. Set it to `false` if the identity already has access, e.g. if several secret stores share one identity: Azure allows only one role assignment per identity, role, and Key Vault, and only one access policy per identity and Key Vault. Grant the access yourself in that case, using the `key_vault_role_definition_name` or `key_vault_secret_permissions` output. | `bool` | `true` | no |
 | <a name="input_key_vault_id"></a> [key\_vault\_id](#input\_key\_vault\_id) | Resource ID of the Azure Key Vault, e.g. `/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/my-rg/providers/Microsoft.KeyVault/vaults/my-key-vault`. It must be located in the subscription of the `azurerm` provider that is passed in to the module. The module reads the URL and tenant ID of the secret store from the Key Vault. | `string` | n/a | yes |
 | <a name="input_key_vault_rbac_authorization_enabled"></a> [key\_vault\_rbac\_authorization\_enabled](#input\_key\_vault\_rbac\_authorization\_enabled) | Whether the Key Vault uses the Azure RBAC permission model (recommended). If `true`, the module grants the Operator access via an Azure role assignment, using the built-in role `Key Vault Secrets Officer` for the default store, and `Key Vault Secrets User` otherwise. If `false`, the Key Vault uses the legacy access policy permission model, and the module grants the Operator access via an access policy. It must match the permission model of the Key Vault, which the module verifies. | `bool` | `true` | no |
 | <a name="input_managed_identity_create"></a> [managed\_identity\_create](#input\_managed\_identity\_create) | Whether to create the user-assigned managed identity used by the Operator. Only used if `auth_method` is `workload_identity`. If `false`, `managed_identity_id` must be the ID of an existing user-assigned managed identity. The Operator uses only one managed identity for all secret stores using Workload Identity, so set it to `false` if the Operator already uses a managed identity, e.g. one created by another instance of the module. | `bool` | `true` | no |
 | <a name="input_managed_identity_id"></a> [managed\_identity\_id](#input\_managed\_identity\_id) | Resource ID of an existing user-assigned managed identity to be used by the Operator, e.g. `/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/my-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/my-identity`. It must be located in the subscription of the `azurerm` provider that is passed in to the module. Required if `auth_method` is `workload_identity` and `managed_identity_create` is `false`, must not be set otherwise. | `string` | `null` | no |
 | <a name="input_managed_identity_location"></a> [managed\_identity\_location](#input\_managed\_identity\_location) | Azure region in which to create the user-assigned managed identity for the Operator, e.g. `westeurope`. If not set, the region of the Key Vault is used. Only used if `auth_method` is `workload_identity` and `managed_identity_create` is `true`. | `string` | `null` | no |
-| <a name="input_managed_identity_name"></a> [managed\_identity\_name](#input\_managed\_identity\_name) | Name of the user-assigned managed identity to create for the Operator. Only used if `auth_method` is `workload_identity` and `managed_identity_create` is `true`. If not set, the module generates a name from the secret store ID and a random four-letter suffix. | `string` | `null` | no |
+| <a name="input_managed_identity_name"></a> [managed\_identity\_name](#input\_managed\_identity\_name) | Name of the user-assigned managed identity to create for the Operator. Only used if `auth_method` is `workload_identity` and `managed_identity_create` is `true`. If not set, the name is `humanitec-operator-<random four-letter suffix>`. It does not contain the secret store ID, so that renaming the secret store does not replace the managed identity. | `string` | `null` | no |
 | <a name="input_managed_identity_resource_group_name"></a> [managed\_identity\_resource\_group\_name](#input\_managed\_identity\_resource\_group\_name) | Name of the resource group in which to create the user-assigned managed identity for the Operator. The resource group must exist. If not set, the resource group of the Key Vault is used. Only used if `auth_method` is `workload_identity` and `managed_identity_create` is `true`. | `string` | `null` | no |
 | <a name="input_managed_identity_tags"></a> [managed\_identity\_tags](#input\_managed\_identity\_tags) | Tags to assign to the user-assigned managed identity created by the module. Only used if `auth_method` is `workload_identity` and `managed_identity_create` is `true`. | `map(string)` | `null` | no |
 | <a name="input_operator_namespace"></a> [operator\_namespace](#input\_operator\_namespace) | Name of the Kubernetes namespace of the Humanitec Operator. | `string` | `"humanitec-operator-system"` | no |
@@ -542,7 +542,7 @@ No modules.
 ## Outputs
 
 | Name | Description |
-|------|-------------|
+| ---- | ----------- |
 | <a name="output_federated_identity_credential"></a> [federated\_identity\_credential](#output\_federated\_identity\_credential) | Issuer, subject, and audience of the federated identity credential allowing the Operator service account to use the managed identity. If `federated_identity_credential_create` is `false`, configure a federated identity credential with these values on the managed identity yourself. The issuer is `null` if `aks_oidc_issuer_url` is not set. Returns `null` if `auth_method` is not `workload_identity`. |
 | <a name="output_federated_identity_credential_id"></a> [federated\_identity\_credential\_id](#output\_federated\_identity\_credential\_id) | ID of the federated identity credential created by the module. Returns `null` if `auth_method` is not `workload_identity` or `federated_identity_credential_create` is `false`. |
 | <a name="output_key_vault_access_policy_id"></a> [key\_vault\_access\_policy\_id](#output\_key\_vault\_access\_policy\_id) | ID of the Key Vault access policy granting the Operator access to the Key Vault. Returns `null` if `key_vault_access_create` is `false` or `key_vault_rbac_authorization_enabled` is `true`. |

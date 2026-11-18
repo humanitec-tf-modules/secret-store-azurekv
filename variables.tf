@@ -100,7 +100,7 @@ variable "managed_identity_create" {
   default     = true
 }
 variable "managed_identity_name" {
-  description = "Name of the user-assigned managed identity to create for the Operator. Only used if `auth_method` is `workload_identity` and `managed_identity_create` is `true`. If not set, the module generates a name from the secret store ID and a random four-letter suffix."
+  description = "Name of the user-assigned managed identity to create for the Operator. Only used if `auth_method` is `workload_identity` and `managed_identity_create` is `true`. If not set, the name is `humanitec-operator-<random four-letter suffix>`. It does not contain the secret store ID, so that renaming the secret store does not replace the managed identity."
   type        = string
   nullable    = true
   default     = null
@@ -166,7 +166,7 @@ variable "federated_identity_credential_create" {
   default     = true
 }
 variable "federated_identity_credential_name" {
-  description = "Name of the federated identity credential to create on the managed identity. Only used if `auth_method` is `workload_identity` and `federated_identity_credential_create` is `true`. If not set, the name is `humanitec-operator-<secret store ID>`."
+  description = "Name of the federated identity credential to create on the managed identity. Only used if `auth_method` is `workload_identity` and `federated_identity_credential_create` is `true`. If not set, the name is `humanitec-operator`."
   type        = string
   nullable    = true
   default     = null
