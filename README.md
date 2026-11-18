@@ -430,7 +430,7 @@ module "my_azurekv_secret_store" {
 
 The application and service principal are owned by the identity of the `azuread` provider unless you set `service_principal_owners`. If you set it, include that identity if it relies on ownership to manage the application, e.g. because it only has the `Application.ReadWrite.OwnedBy` permission.
 
-The client secret expires after two years unless you set `service_principal_client_secret_end_date`. Changing the end date replaces the client secret, and the module updates the Kubernetes Secret accordingly.
+The client secret expires after two years unless you set `service_principal_client_secret_end_date`. Changing the end date replaces the client secret, and the module updates the Kubernetes Secret accordingly. The module only deletes the old client secret once the Kubernetes Secret holds the new one.
 
 > [!WARNING]
 > If the module creates the service principal, the client secret is stored in the OpenTofu/Terraform state as part of the `azuread_application_password` resource. Make sure your state is stored securely, or [bring your own service principal](#bring-your-own-service-principal) to keep the secret out of the state.

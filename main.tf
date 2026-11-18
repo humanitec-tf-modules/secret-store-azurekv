@@ -208,6 +208,12 @@ resource "azuread_application_password" "operator" {
   application_id = azuread_application.operator[0].id
   display_name   = "humanitec-operator-${local.secret_store_id}"
   end_date       = var.service_principal_client_secret_end_date
+
+  lifecycle {
+    # An application can hold several passwords. Create the new one first, so that the old one is only deleted once
+    # the Kubernetes Secret holds the new one, and the Operator never holds a revoked client secret.
+    create_before_destroy = true
+  }
 }
 
 data "azuread_service_principal" "operator" {
@@ -323,12 +329,14 @@ resource "kubernetes_manifest" "secret_store" {
     }
   }
 
-  # Only register the store once the Operator identity has its permissions
+  # Only register the store once the Operator identity has its permissions.
+  # The credentials Secret of a service principal is deliberately not listed: with create_before_destroy on the client
+  # secret, OpenTofu detects a dependency cycle if the application was updated in place earlier and the auth method then
+  # changes. The Operator tolerates a briefly missing Secret anyway, as replacing the Secret on rotation also leaves a gap.
   depends_on = [
     azurerm_federated_identity_credential.operator,
     azurerm_role_assignment.operator,
     azurerm_key_vault_access_policy.operator,
-    kubernetes_secret_v1.operator_credentials,
   ]
 
   lifecycle {
