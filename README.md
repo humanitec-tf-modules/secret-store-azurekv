@@ -33,7 +33,7 @@ So that you can install the Operator in the same OpenTofu/Terraform configuratio
 
 If you install the Operator in the same run as the module, this takes two consecutive applies without any configuration change in between:
 
-1. The first apply installs the Operator, and with it the CRD, and creates the AWS objects. The warning is expected.
+1. The first apply installs the Operator, and with it the CRD, and creates the Azure and Microsoft Entra ID objects. The warning is expected.
 2. The second apply finds the CRD and creates the `SecretStore`.
 
 If the Operator is already installed, a single apply is sufficient.
